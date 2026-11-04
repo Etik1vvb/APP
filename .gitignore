@@ -1,0 +1,39 @@
+*.iml
+.gradle
+/local.properties
+/.idea/caches
+/.idea/libraries
+/.idea/modules.xml
+/.idea/workspace.xml
+/.idea/navEditor.xml
+/.idea/assetWizardSettings.xml
+.DS_Store
+/build
+/captures
+.externalNativeBuild
+.cxx
+local.properties
+
+
+# 모든 하위 모듈의 빌드 결과물 제외
+**/build/
+
+# 모든 하위 폴더의 Gradle 캐시 제외
+**/.gradle/
+
+# 환경변수 및 비밀 정보 제외
+.env
+.env.*
+*.jks
+*.keystore
+
+# 임시 로그 및 오류 기록 제외
+*.log
+*.hprof
+
+# Android Studio 개인 작업 데이터 제외
+.idea/tasks.xml
+.idea/shelf/
+
+# Android Studio 개인 설정 제외
+.idea/
