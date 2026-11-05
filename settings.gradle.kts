@@ -16,9 +16,17 @@ plugins {
 }
 dependencyResolutionManagement {
     repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+
     repositories {
         google()
         mavenCentral()
+
+        // Pleos Vehicle SDK를 다운로드할 저장소
+        maven {
+            url = uri(
+                "https://nexus-playground.pleos.ai/repository/maven-releases/"
+            )
+        }
     }
 }
 

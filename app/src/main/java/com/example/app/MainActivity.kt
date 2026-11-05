@@ -30,6 +30,7 @@ import com.example.app.ui.profile.ProfileScreen
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Arrangement
 
+import com.example.app.vehicle.VehicleRepository
 
 
 /*
@@ -49,8 +50,14 @@ import androidx.compose.foundation.layout.Arrangement
 
 class MainActivity : ComponentActivity() {
 
+    private lateinit var vehicleRepository: VehicleRepository
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        vehicleRepository = VehicleRepository(this)
+        vehicleRepository.initialize()
+        vehicleRepository.checkDriverDoor()
 
         setContent {
 
@@ -203,6 +210,12 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+    }
+    override fun onDestroy() {
+        if (::vehicleRepository.isInitialized) {
+            vehicleRepository.release()
+        }
+        super.onDestroy()
     }
 }
 

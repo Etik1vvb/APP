@@ -11,7 +11,7 @@ android {
 
     defaultConfig {
         applicationId = "com.example.app"
-        minSdk = 24
+        minSdk = 28
         targetSdk = 37
         versionCode = 1
         versionName = "1.0"
@@ -55,4 +55,8 @@ dependencies {
     androidTestImplementation(libs.androidx.junit)
     debugImplementation(libs.androidx.compose.ui.test.manifest)
     debugImplementation(libs.androidx.compose.ui.tooling)
+
+     // Pleos 차량 정보 조회 SDK
+    // Pleos Vehicle SDK: 공식 상세 문서 기준
+    implementation("ai.pleos.playground:Vehicle:2.3.2")
 }
