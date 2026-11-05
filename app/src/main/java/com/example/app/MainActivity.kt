@@ -24,7 +24,13 @@ import kotlinx.coroutines.launch
 
 import com.example.app.data.UserProfile
 import com.example.app.data.UserPreferencesRepository
+
 import com.example.app.ui.profile.ProfileScreen
+
+import com.example.app.ui.trip.TripSetupScreen
+import com.example.app.ui.trip.TripInfo
+import com.example.app.data.TripRepository
+import com.example.app.data.TripStatus
 
 
 import androidx.compose.foundation.layout.Column
@@ -71,6 +77,10 @@ class MainActivity : ComponentActivity() {
                 )
             }
 
+            val tripRepository = remember(context) {
+                TripRepository(context.applicationContext)
+            }
+
             // 3. 저장 작업에 사용할 코루틴 범위
             val scope = rememberCoroutineScope()
 
@@ -87,6 +97,12 @@ class MainActivity : ComponentActivity() {
              * 아직 데이터를 읽는 중이라는 의미다.
              */
             val profile by repository.userProfile
+                .collectAsState(initial = null)
+
+            val savedTrip by tripRepository.savedTrip
+                .collectAsState(initial = null)
+
+            val tripStatus by tripRepository.tripStatus
                 .collectAsState(initial = null)
 
             /*
@@ -171,6 +187,15 @@ class MainActivity : ComponentActivity() {
                             Arrangement.spacedBy(16.dp)
                     ) {
 
+                        Button(
+                            onClick = {
+                                currentScreen = "trip"
+                            },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text("새 여행 등록하기")
+                        }
+
                         Text(
                             text = "저장된 사용자 정보",
                             style = MaterialTheme
@@ -199,6 +224,59 @@ class MainActivity : ComponentActivity() {
                             }"
                         )
 
+                        HorizontalDivider()
+
+                        Text(
+                            text = "저장된 여행 정보",
+                            style = MaterialTheme.typography.headlineSmall
+                        )
+
+                        val trip = savedTrip
+
+                        Text(
+                            text = when (tripStatus) {
+                                TripStatus.PLANNED -> "여행 상태: 출발 전"
+                                TripStatus.ACTIVE -> "여행 상태: 여행 중"
+                                TripStatus.COMPLETED -> "여행 상태: 여행 종료"
+                                null -> "여행 상태: 등록된 여행 없음"
+                            },
+                            style = MaterialTheme.typography.titleMedium
+                        )
+
+                        if (trip == null) {
+                            Text("등록된 여행이 없습니다.")
+                        } else {
+                            Text("목적지: ${trip.destination}")
+                            Text("출발 날짜: ${trip.startDate}")
+                            Text("도착 날짜: ${trip.endDate}")
+                            Text("동행자: ${trip.companions}")
+                            Text("여행 목적: ${trip.purpose}")
+                            if (tripStatus == TripStatus.PLANNED) {
+                                Button(
+                                    onClick = {
+                                        scope.launch {
+                                            tripRepository.startTrip()
+                                        }
+                                    },
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Text("여행 시작하기")
+                                }
+                            }
+                            if (tripStatus == TripStatus.ACTIVE) {
+                                Button(
+                                    onClick = {
+                                        scope.launch {
+                                            tripRepository.completeTrip()
+                                        }
+                                    },
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Text("여행 종료하기")
+                                }
+                            }
+                        }
+
                         Button(
                             onClick = {
                                 currentScreen = "home"
@@ -208,6 +286,28 @@ class MainActivity : ComponentActivity() {
                         }
                     }
                 }
+
+
+                "trip" -> {
+                    TripSetupScreen(
+                        onSave = { trip: TripInfo ->
+                            scope.launch {
+                                tripRepository.saveTrip(trip)
+
+                                android.util.Log.d(
+                                    "RoadTripTrip",
+                                    "여행 저장 완료: $trip"
+                                )
+
+                                currentScreen = "saved"
+                            }
+                        },
+                        onBack = {
+                            currentScreen = "saved"
+                        }
+                    )
+                }
+
             }
         }
     }
