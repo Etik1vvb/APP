@@ -58,5 +58,18 @@ dependencies {
 
      // Pleos 차량 정보 조회 SDK
     // Pleos Vehicle SDK: 공식 상세 문서 기준
+
+    // 차량 정보
     implementation("ai.pleos.playground:Vehicle:2.3.2")
+
+    // 음성 인식 및 음성 출력
+    implementation("ai.pleos.playground:SpeechToText:3.3.1")
+    implementation("ai.pleos.playground:TextToSpeech:3.3.1")
+
+    // 내비게이션
+    implementation("ai.pleos.playground:NaviHelper:3.0.5")
+
+    // 차량 위치
+    implementation("ai.pleos.playground:FusedLocation:1.1.3")
+
 }

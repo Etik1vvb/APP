@@ -20,6 +20,8 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.runtime.*
 
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.material3.MaterialTheme
+
 import kotlinx.coroutines.launch
 
 import com.example.app.data.UserProfile
@@ -37,6 +39,15 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Arrangement
 
 import com.example.app.vehicle.VehicleRepository
+
+import com.example.app.ui.home.HomeScreen
+import com.example.app.ui.theme.APPTheme
+
+import com.example.app.ui.voice.MicrophoneTest
+import com.example.app.ui.voice.AudioRecorderTestScreen
+import com.example.app.ui.voice.PleosSttTestScreen
+import com.example.app.ui.voice.PleosTtsTestScreen
+import com.example.app.ui.voice.MoaVoiceTestScreen
 
 
 /*
@@ -122,193 +133,259 @@ class MainActivity : ComponentActivity() {
              * when은 조건에 따라 다른 코드를
              * 실행하는 Kotlin 문법이다.
              */
-            when (currentScreen) {
+            APPTheme {
+                when (currentScreen) {
 
-                "home" -> {
-                    RoadTripHome(
-                        onStartClick = {
-
-                            /*
-                             * DataStore에서 읽은 닉네임으로
-                             * 프로필 등록 여부를 판단한다.
-                             *
-                             * 닉네임이 비어 있으면 신규 사용자,
-                             * 값이 있으면 기존 사용자다.
-                             */
-                            if (profile?.nickname.isNullOrBlank()) {
-                                currentScreen = "profile"
-                            } else {
-                                currentScreen = "saved"
-                            }
-                        }
-                    )
-                }
-
-                "profile" -> {
-                    ProfileScreen(
-                        onSave = {
-                                nickname,
-                                ageGroup,
-                                gender,
-                                preferences ->
-
-                            // 화면에서 받은 값을 객체로 묶는다.
-                            val newProfile = UserProfile(
-                                nickname = nickname,
-                                ageGroup = ageGroup,
-                                gender = gender,
-                                preferences = preferences
-                            )
-
-                            /*
-                             * DataStore에 저장한다.
-                             *
-                             * 저장이 끝나면 홈 화면으로 이동한다.
-                             */
-                            scope.launch {
-                                repository.saveProfile(newProfile)
-                                currentScreen = "home"
-                            }
-                        }
-                    )
-                }
-
-                "saved" -> {
-
-                    /*
-                     * 아직 여행 등록 화면이 없으므로
-                     * 저장된 프로필을 임시로 표시한다.
-                     */
-                    Column(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .padding(24.dp),
-                        verticalArrangement =
-                            Arrangement.spacedBy(16.dp)
-                    ) {
-
-                        Button(
-                            onClick = {
-                                currentScreen = "trip"
-                            },
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Text("새 여행 등록하기")
-                        }
-
-                        Text(
-                            text = "저장된 사용자 정보",
-                            style = MaterialTheme
-                                .typography.headlineSmall
-                        )
-
-                        Text(
-                            text = "닉네임: ${profile?.nickname.orEmpty()}"
-                        )
-
-                        Text(
-                            text = "연령대: ${profile?.ageGroup ?: "미입력"}"
-                        )
-
-                        Text(
-                            text = "성별: ${profile?.gender ?: "미입력"}"
-                        )
-
-                        Text(
-                            text = "여행 취향: ${
-                                profile?.preferences
-                                    ?.sorted()
-                                    ?.joinToString(", ")
-                                    ?.ifEmpty { "미선택" }
-                                    ?: "미선택"
-                            }"
-                        )
-
-                        HorizontalDivider()
-
-                        Text(
-                            text = "저장된 여행 정보",
-                            style = MaterialTheme.typography.headlineSmall
-                        )
-
-                        val trip = savedTrip
-
-                        Text(
-                            text = when (tripStatus) {
-                                TripStatus.PLANNED -> "여행 상태: 출발 전"
-                                TripStatus.ACTIVE -> "여행 상태: 여행 중"
-                                TripStatus.COMPLETED -> "여행 상태: 여행 종료"
-                                null -> "여행 상태: 등록된 여행 없음"
-                            },
-                            style = MaterialTheme.typography.titleMedium
-                        )
-
-                        if (trip == null) {
-                            Text("등록된 여행이 없습니다.")
-                        } else {
-                            Text("목적지: ${trip.destination}")
-                            Text("출발 날짜: ${trip.startDate}")
-                            Text("도착 날짜: ${trip.endDate}")
-                            Text("동행자: ${trip.companions}")
-                            Text("여행 목적: ${trip.purpose}")
-                            if (tripStatus == TripStatus.PLANNED) {
-                                Button(
-                                    onClick = {
-                                        scope.launch {
-                                            tripRepository.startTrip()
-                                        }
-                                    },
-                                    modifier = Modifier.fillMaxWidth()
-                                ) {
-                                    Text("여행 시작하기")
-                                }
-                            }
-                            if (tripStatus == TripStatus.ACTIVE) {
-                                Button(
-                                    onClick = {
-                                        scope.launch {
-                                            tripRepository.completeTrip()
-                                        }
-                                    },
-                                    modifier = Modifier.fillMaxWidth()
-                                ) {
-                                    Text("여행 종료하기")
-                                }
-                            }
-                        }
-
-                        Button(
-                            onClick = {
-                                currentScreen = "home"
-                            }
-                        ) {
-                            Text("처음 화면으로")
-                        }
+                    "moa_voice_test" -> {
+                        MoaVoiceTestScreen()
                     }
-                }
+
+                    "pleos_tts_test" -> {
+                        PleosTtsTestScreen()
+                    }
+
+                    "record_test" -> {
+                        AudioRecorderTestScreen()
+                    }
+
+                    "mic_test" -> {
+                        MicrophoneTest()
+                    }
+
+                    "pleos_stt_test" -> {
+                        PleosSttTestScreen()
+                    }
 
 
-                "trip" -> {
-                    TripSetupScreen(
-                        onSave = { trip: TripInfo ->
-                            scope.launch {
-                                tripRepository.saveTrip(trip)
+                    "home" -> {
+                        HomeScreen(
+                            nickname = profile?.nickname,
+                            destination = savedTrip?.destination,
+                            tripStatus = tripStatus,
 
-                                android.util.Log.d(
-                                    "RoadTripTrip",
-                                    "여행 저장 완료: $trip"
+                            onPrimaryClick = {
+                                if (profile?.nickname.isNullOrBlank()) {
+                                    currentScreen = "profile"
+                                } else if (
+                                    savedTrip != null &&
+                                    tripStatus != TripStatus.COMPLETED
+                                ) {
+                                    currentScreen = "saved"
+                                } else {
+                                    currentScreen = "trip"
+                                }
+                            },
+
+                            onProfileClick = {
+                                currentScreen = "profile"
+                            },
+
+                            onHistoryClick = {
+                                currentScreen = "moa_voice_test"
+                            }
+                        )
+                    }
+
+
+                    "profile" -> {
+                        ProfileScreen(
+                            onSave = {
+                                    nickname,
+                                    ageGroup,
+                                    gender,
+                                    preferences ->
+
+                                // 화면에서 받은 값을 객체로 묶는다.
+                                val newProfile = UserProfile(
+                                    nickname = nickname,
+                                    ageGroup = ageGroup,
+                                    gender = gender,
+                                    preferences = preferences
                                 )
 
+                                /*
+                                 * DataStore에 저장한다.
+                                 *
+                                 * 저장이 끝나면 홈 화면으로 이동한다.
+                                 */
+                                scope.launch {
+                                    repository.saveProfile(newProfile)
+                                    currentScreen = "home"
+                                }
+                            }
+                        )
+                    }
+
+                    "saved" -> {
+
+                        /*
+                         * 아직 여행 등록 화면이 없으므로
+                         * 저장된 프로필을 임시로 표시한다.
+                         */
+                        Column(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(24.dp),
+                            verticalArrangement =
+                                Arrangement.spacedBy(16.dp)
+                        ) {
+
+                            Button(
+                                onClick = {
+                                    currentScreen = "trip"
+                                },
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text("새 여행 등록하기")
+                            }
+
+                            Text(
+                                text = "저장된 사용자 정보",
+                                style = MaterialTheme
+                                    .typography.headlineSmall
+                            )
+
+                            Text(
+                                text = "닉네임: ${profile?.nickname.orEmpty()}"
+                            )
+
+                            Text(
+                                text = "연령대: ${profile?.ageGroup ?: "미입력"}"
+                            )
+
+                            Text(
+                                text = "성별: ${profile?.gender ?: "미입력"}"
+                            )
+
+                            Text(
+                                text = "여행 취향: ${
+                                    profile?.preferences
+                                        ?.sorted()
+                                        ?.joinToString(", ")
+                                        ?.ifEmpty { "미선택" }
+                                        ?: "미선택"
+                                }"
+                            )
+
+                            HorizontalDivider()
+
+                            Text(
+                                text = "저장된 여행 정보",
+                                style = MaterialTheme.typography.headlineSmall
+                            )
+
+                            val trip = savedTrip
+
+                            Text(
+                                text = when (tripStatus) {
+                                    TripStatus.PLANNED -> "여행 상태: 출발 전"
+                                    TripStatus.ACTIVE -> "여행 상태: 여행 중"
+                                    TripStatus.COMPLETED -> "여행 상태: 여행 종료"
+                                    null -> "여행 상태: 등록된 여행 없음"
+                                },
+                                style = MaterialTheme.typography.titleMedium
+                            )
+
+                            if (trip == null) {
+                                Text("등록된 여행이 없습니다.")
+                            } else {
+                                Text("목적지: ${trip.destination}")
+                                Text("출발 날짜: ${trip.startDate}")
+                                Text("도착 날짜: ${trip.endDate}")
+                                Text("동행자: ${trip.companions}")
+                                Text("여행 목적: ${trip.purpose}")
+                                if (tripStatus == TripStatus.PLANNED) {
+                                    Button(
+                                        onClick = {
+                                            scope.launch {
+                                                tripRepository.startTrip()
+                                            }
+                                        },
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        Text("여행 시작하기")
+                                    }
+                                }
+                                if (tripStatus == TripStatus.ACTIVE) {
+                                    Button(
+                                        onClick = {
+                                            scope.launch {
+                                                tripRepository.completeTrip()
+                                            }
+                                        },
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        Text("여행 종료하기")
+                                    }
+                                }
+                            }
+
+                            Button(
+                                onClick = {
+                                    currentScreen = "home"
+                                }
+                            ) {
+                                Text("처음 화면으로")
+                            }
+                        }
+                    }
+
+
+                    "trip" -> {
+                        TripSetupScreen(
+                            onSave = { trip: TripInfo ->
+                                scope.launch {
+                                    tripRepository.saveTrip(trip)
+
+                                    android.util.Log.d(
+                                        "RoadTripTrip",
+                                        "여행 저장 완료: $trip"
+                                    )
+
+                                    currentScreen = "saved"
+                                }
+                            },
+                            onBack = {
                                 currentScreen = "saved"
                             }
-                        },
-                        onBack = {
-                            currentScreen = "saved"
-                        }
-                    )
-                }
+                        )
+                    }
 
+
+                    "history" -> {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .background(
+                                    MaterialTheme.colorScheme.background
+                                )
+                                .padding(32.dp),
+                            verticalArrangement = Arrangement.spacedBy(20.dp)
+                        ) {
+                            Text(
+                                text = "여행 기록",
+                                style = MaterialTheme.typography.headlineLarge
+                            )
+
+                            Text(
+                                text = "여러 여행을 저장하고 조회하는 기능은 " +
+                                        "다음 개발 단계에서 구현합니다."
+                            )
+
+                            Button(
+                                onClick = {
+                                    currentScreen = "home"
+                                }
+                            ) {
+                                Text("홈으로 돌아가기")
+                            }
+                        }
+                    }
+
+
+                }
             }
+
         }
     }
     override fun onDestroy() {
@@ -328,7 +405,7 @@ fun RoadTripHome(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color(0xFF101C30))
+            .background(MaterialTheme.colorScheme.background)
             .padding(24.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center

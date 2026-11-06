@@ -37,3 +37,9 @@ local.properties
 
 # Android Studio 개인 설정 제외
 .idea/
+
+# Python backend
+backend/.venv/
+backend/.env
+backend/__pycache__/
+backend/*.pyc
