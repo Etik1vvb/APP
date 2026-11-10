@@ -43,3 +43,7 @@ backend/.venv/
 backend/.env
 backend/__pycache__/
 backend/*.pyc
+
+# Local Android configuration and API keys
+local.properties
+**/local.properties

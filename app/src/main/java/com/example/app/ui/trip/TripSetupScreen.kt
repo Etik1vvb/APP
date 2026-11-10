@@ -1,4 +1,3 @@
-
 package com.example.app.ui.trip
 
 
@@ -29,27 +28,95 @@ data class TripInfo(
     val startDate: String,
     val endDate: String,
     val companions: String,
-    val purpose: String
+    val purpose: String,
+    val mood: String = "",
+    val desiredExperience: String = "",
+    val detourPreference: String = ""
 )
 
-private enum class VoiceTarget {
-    REGION, COMPANIONS, PURPOSE
+// STT 문장을 항목별 핵심 값으로 분류하는 규칙 기반 파서입니다.
+private data class CheckinVoiceValues(
+    val companions: String? = null,
+    val purpose: String? = null,
+    val mood: String? = null,
+    val experience: String? = null,
+    val detour: String? = null
+)
+
+private fun classifyCheckinSpeech(input: String): CheckinVoiceValues {
+    val t = input.replace(" ", "").lowercase()
+    fun containsAny(vararg words: String) = words.any { it in t }
+
+    val companions = when {
+        containsAny("혼자", "나홀로", "홀로") -> "혼자"
+        containsAny("반려견", "강아지", "반려동물") -> "반려동물"
+        containsAny("부모님", "어머니", "아버지") -> "부모님"
+        containsAny("아이들", "아이랑", "자녀") -> "아이"
+        containsAny("배우자", "남편", "아내") -> "배우자"
+        containsAny("연인", "남자친구", "여자친구", "애인") -> "연인"
+        containsAny("친구") -> "친구"
+        containsAny("가족") -> "가족"
+        containsAny("동료", "회사사람") -> "직장 동료"
+        else -> null
+    }
+    val mood = when {
+        containsAny("안피곤", "피곤하지않", "안지쳤") -> null
+        containsAny("피곤", "지쳤", "지치", "피로", "녹초") -> "피곤"
+        containsAny("스트레스", "짜증", "화가나", "화났") -> "스트레스"
+        containsAny("우울", "슬퍼", "슬프", "울적") -> "우울"
+        containsAny("답답", "갑갑") -> "답답"
+        containsAny("설레", "설렘", "두근") -> "설렘"
+        containsAny("행복", "기뻐", "기분좋") -> "행복"
+        containsAny("신나", "신남", "들떠") -> "신남"
+        containsAny("여유", "편안", "느긋") -> "여유"
+        containsAny("지루", "심심") -> "지루함"
+        else -> null
+    }
+    val purpose = when {
+        containsAny("기분전환", "바람쐬", "머리식히") -> "기분 전환"
+        containsAny("맛집탐방", "먹방", "맛집투어") -> "맛집 탐방"
+        containsAny("쉬고싶", "푹쉬", "휴식", "힐링") -> "휴식"
+        containsAny("드라이브") -> "드라이브"
+        containsAny("데이트") -> "데이트"
+        containsAny("추억", "기념") -> "추억 만들기"
+        containsAny("축하", "생일", "기념일") -> "축하"
+        containsAny("관광", "구경") -> "관광"
+        else -> null
+    }
+    val experience = when {
+        containsAny("바다", "해변", "해수욕장") -> "바다 감상"
+        containsAny("숨은명소", "숨겨진", "사람없는곳") -> "숨은 명소"
+        containsAny("사진", "포토존", "인생샷") -> "사진 명소"
+        containsAny("카페", "커피", "디저트") -> "카페"
+        containsAny("맛집", "맛있는거", "맛있는것") -> "맛집"
+        containsAny("산책", "걷고싶") -> "산책"
+        containsAny("야경", "밤풍경") -> "야경"
+        containsAny("등산", "산에가") -> "등산"
+        containsAny("박물관", "유적", "문화재") -> "역사·문화"
+        containsAny("쇼핑", "시장") -> "쇼핑"
+        containsAny("체험", "액티비티") -> "액티비티"
+        else -> null
+    }
+    return CheckinVoiceValues(companions, purpose, mood, experience, normalizeDetourSpeech(input))
 }
 
 @Composable
 fun TripSetupScreen(
     onSave: (TripInfo) -> Unit,
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    initialTrip: TripInfo? = null
 ) {
-    var region by remember { mutableStateOf("") }
-    var startDate by remember { mutableStateOf("") }
-    var endDate by remember { mutableStateOf("") }
-    var companions by remember { mutableStateOf("") }
-    var purpose by remember { mutableStateOf("") }
+    // Editing preserves the existing trip ID/status in the repository.
+    // Remember keyed by initialTrip to reload fields when changing trips.
+    var region by remember(initialTrip) { mutableStateOf(initialTrip?.destination.orEmpty()) }
+    var startDate by remember(initialTrip) { mutableStateOf(initialTrip?.startDate.orEmpty()) }
+    var endDate by remember(initialTrip) { mutableStateOf(initialTrip?.endDate.orEmpty()) }
+    var companions by remember(initialTrip) { mutableStateOf(initialTrip?.companions.orEmpty()) }
+    var purpose by remember(initialTrip) { mutableStateOf(initialTrip?.purpose.orEmpty()) }
+    var mood by remember(initialTrip) { mutableStateOf(initialTrip?.mood.orEmpty()) }
+    var desiredExperience by remember(initialTrip) { mutableStateOf(initialTrip?.desiredExperience.orEmpty()) }
+    var detourPreference by remember(initialTrip) { mutableStateOf(initialTrip?.detourPreference.orEmpty()) }
 
-    var voiceTarget by remember {
-        mutableStateOf(VoiceTarget.REGION)
-    }
     var voiceResult by remember { mutableStateOf("") }
     var voiceError by remember { mutableStateOf("") }
 
@@ -136,34 +203,29 @@ fun TripSetupScreen(
                 voiceResult = confirmedTranscript
                 voiceError = ""
 
+                // 하나의 발화에서 여러 항목을 동시에 추출합니다.
                 val parsed = TripVoiceParser.parse(
-                    text = confirmedTranscript,
+                    text = recognizedText,
                     currentStartDate = startDate,
                     currentEndDate = endDate
                 )
-
-                parsed.region?.let {
-                    region = it
-                }
-
-                parsed.startDate?.let {
-                    startDate = it
-                }
-
-                parsed.endDate?.let {
-                    endDate = it
-                }
-
-                parsed.companions?.let {
-                    companions = it
-                }
-
-                parsed.purpose?.let {
-                    purpose = it
-                }
-
+                parsed.region?.let { region = it }
+                parsed.startDate?.let { startDate = it }
+                parsed.endDate?.let { endDate = it }
                 if (parsed.needsYearConfirmation) {
                     voiceStatus = "날짜의 연도를 확인해 주세요."
+                }
+                val classified = classifyCheckinSpeech(recognizedText)
+                classified.companions?.let { companions = it }
+                classified.purpose?.let { purpose = it }
+                classified.mood?.let { mood = it }
+                classified.experience?.let { desiredExperience = it }
+                classified.detour?.let { detourPreference = it }
+                if (parsed.region == null && parsed.startDate == null &&
+                    parsed.endDate == null && classified.companions == null &&
+                    classified.purpose == null && classified.mood == null &&
+                    classified.experience == null && classified.detour == null) {
+                    voiceError = "분류할 항목을 찾지 못했어요. 직접 입력하거나 더 구체적으로 말해 주세요."
                 }
             }
         }
@@ -179,7 +241,7 @@ fun TripSetupScreen(
         }
     }
 
-    fun startVoiceInput(target: VoiceTarget) {
+    fun startVoiceInput() {
 
         if (isListening) {
             voiceManager.stopListening()
@@ -187,7 +249,6 @@ fun TripSetupScreen(
             return
         }
 
-        voiceTarget = target
         voiceResult = ""
         voiceError = ""
         liveTranscript = ""
@@ -217,14 +278,14 @@ fun TripSetupScreen(
         verticalArrangement = Arrangement.spacedBy(22.dp)
     ) {
         Text(
-            text = "새로운 여행",
+            text = if (initialTrip == null) "새로운 여행" else "여행 수정",
             fontSize = 36.sp,
             fontWeight = FontWeight.Bold,
             color = RoadTripText
         )
 
         Text(
-            text = "지역과 기간을 정해 주세요",
+            text = if (initialTrip == null) "지역과 기간을 정해 주세요" else "등록된 여행 정보를 수정해 주세요",
             fontSize = 24.sp,
             color = RoadTripTextSecondary
         )
@@ -252,36 +313,14 @@ fun TripSetupScreen(
                 )
 
                 Text(
-                    text = "먼저 입력할 항목을 선택하세요",
+                    text = "항목 선택 없이 자유롭게 말씀해 주세요",
                     fontSize = 19.sp,
                     color = RoadTripTextSecondary
                 )
 
-                Row(
-                    horizontalArrangement =
-                        Arrangement.spacedBy(8.dp)
-                ) {
-                    listOf(
-                        VoiceTarget.REGION to "지역",
-                        VoiceTarget.COMPANIONS to "동행",
-                        VoiceTarget.PURPOSE to "취향"
-                    ).forEach { (target, label) ->
-                        FilterChip(
-                            selected = voiceTarget == target,
-                            onClick = {
-                                voiceTarget = target
-                                voiceResult = ""
-                            },
-                            label = {
-                                Text(label, fontSize = 18.sp)
-                            }
-                        )
-                    }
-                }
-
                 Button(
                     onClick = {
-                        startVoiceInput(voiceTarget)
+                        startVoiceInput()
                     },
                     modifier = Modifier.size(112.dp),
                     shape = RoundedCornerShape(32.dp),
@@ -330,34 +369,12 @@ fun TripSetupScreen(
                         fontSize = 21.sp,
                         color = RoadTripText
                     )
-
-                    Button(
-                        onClick = {
-                            when (voiceTarget) {
-                                VoiceTarget.REGION ->
-                                    region = voiceResult
-                                VoiceTarget.COMPANIONS ->
-                                    companions = voiceResult
-                                VoiceTarget.PURPOSE ->
-                                    purpose = voiceResult
-                            }
-                            voiceResult = ""
-                        },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .heightIn(min = 64.dp)
-                    ) {
-                        Text(
-                            "선택한 항목에 적용",
-                            fontSize = 20.sp
-                        )
-                    }
                 }
             }
         }
 
         Text(
-            text = "여행 기본 정보",
+            text = "여행 체크인",
             fontSize = 28.sp,
             fontWeight = FontWeight.Bold,
             color = RoadTripText
@@ -410,11 +427,53 @@ fun TripSetupScreen(
         )
 
         TripInput(
-            label = "이번 여행 취향",
+            label = "이번 여행 목적",
             value = purpose,
-            placeholder = "예: 바다, 맛집, 사진",
+            placeholder = "예: 휴식, 맛집 탐방, 기분 전환",
             onChange = { purpose = it }
         )
+
+        TripInput(
+            label = "지금 기분",
+            value = mood,
+            placeholder = "예: 설렘, 여유로움, 피로함",
+            onChange = { mood = it }
+        )
+
+        TripInput(
+            label = "이번 여행에서 원하는 경험",
+            value = desiredExperience,
+            placeholder = "예: 바다 감상, 숨은 명소, 카페",
+            onChange = { desiredExperience = it }
+        )
+
+        Text(
+            text = "오늘 가능한 우회 시간",
+            fontSize = 22.sp,
+            fontWeight = FontWeight.SemiBold,
+            color = RoadTripText
+        )
+
+        listOf("우회를 원하지 않음", "5분 이내", "10분 정도", "20~30분", "특별한 장소라면 더 멀리도").forEach { option ->
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                RadioButton(
+                    selected = detourPreference == option,
+                    onClick = { detourPreference = option }
+                )
+                Text(
+                    text = option,
+                    fontSize = 19.sp,
+                    color = RoadTripText
+                )
+            }
+        }
+
+        TextButton(onClick = { detourPreference = "" }) {
+            Text("우회 시간 미정")
+        }
 
         Text(
             text = "세부 목적지는 여행 중에도 변경할 수 있어요.",
@@ -430,7 +489,10 @@ fun TripSetupScreen(
                         startDate = startDate.trim(),
                         endDate = endDate.trim(),
                         companions = companions.trim(),
-                        purpose = purpose.trim()
+                        purpose = purpose.trim(),
+                        mood = mood.trim(),
+                        desiredExperience = desiredExperience.trim(),
+                        detourPreference = detourPreference
                     )
                 )
             },
@@ -441,7 +503,7 @@ fun TripSetupScreen(
             shape = RoundedCornerShape(20.dp)
         ) {
             Text(
-                text = "여행 등록하기",
+                text = if (initialTrip == null) "여행 등록하기" else "수정 내용 저장",
                 fontSize = 24.sp,
                 fontWeight = FontWeight.Bold
             )
@@ -488,4 +550,17 @@ private fun TripInput(
         singleLine = true,
         shape = RoundedCornerShape(16.dp)
     )
+}
+
+// Match speech to one of the exact radio-button values.
+private fun normalizeDetourSpeech(text: String): String? {
+    val spoken = text.replace(" ", "").replace("~", "-").lowercase()
+    return when {
+        listOf("우회안", "우회하지", "우회싫", "우회원하지", "돌아가기싫", "돌아가지않", "돌아가지마", "돌아가기원치", "우회없", "0분", "영분", "바로가", "곧장가", "직진만").any { it in spoken } -> "우회를 원하지 않음"
+        listOf("20", "30", "이십", "삼십").any { it in spoken } -> "20~30분"
+        listOf("10", "십분").any { it in spoken } -> "10분 정도"
+        listOf("5분", "오분").any { it in spoken } -> "5분 이내"
+        listOf("멀리", "제한없", "상관없", "특별한장소").any { it in spoken } -> "특별한 장소라면 더 멀리도"
+        else -> null
+    }
 }

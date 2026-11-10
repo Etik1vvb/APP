@@ -24,18 +24,17 @@ fun HomeScreen(
     tripStatus: TripStatus?,
     onPrimaryClick: () -> Unit,
     onProfileClick: () -> Unit,
-    onHistoryClick: () -> Unit
+    onHistoryClick: () -> Unit,
+    onProfileSelectClick: () -> Unit = onProfileClick
 ) {
     val primaryLabel = when (tripStatus) {
         TripStatus.PLANNED -> "여행 확인하기"
         TripStatus.ACTIVE -> "진행 중인 여행 보기"
-        TripStatus.COMPLETED -> "새 여행 만들기"
-        null -> "새 여행 만들기"
+        TripStatus.COMPLETED, null -> "새 여행 만들기"
     }
 
     Column(
-        modifier = Modifier
-            .fillMaxSize()
+        modifier = Modifier.fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
             .verticalScroll(rememberScrollState())
             .padding(horizontal = 32.dp, vertical = 24.dp),
@@ -46,113 +45,59 @@ fun HomeScreen(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            Text(
-                text = "RoadTrip",
-                fontSize = 30.sp,
-                fontWeight = FontWeight.Bold,
-                color = RoadTripText
-            )
-
-            TextButton(onClick = onProfileClick) {
-                Text(
-                    text = "내 프로필  ›",
-                    fontSize = 19.sp
-                )
+            Text("RoadTrip", fontSize = 30.sp, fontWeight = FontWeight.Bold, color = RoadTripText)
+            TextButton(onClick = onProfileSelectClick) {
+                Text("프로필 선택  ›", fontSize = 19.sp)
             }
         }
 
         Column(
-            modifier = Modifier
-                .fillMaxWidth()
+            modifier = Modifier.fillMaxWidth()
                 .background(
                     brush = Brush.horizontalGradient(
-                        listOf(
-                            Color(0xFFE5DEFF),
-                            Color(0xFFDDF2FF),
-                            Color(0xFFDDF9F1)
-                        )
+                        listOf(Color(0xFFE5DEFF), Color(0xFFDDF2FF), Color(0xFFDDF9F1))
                     ),
                     shape = RoundedCornerShape(28.dp)
-                )
-                .padding(32.dp),
+                ).padding(32.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
+            Text("MOA · AI 여행 동반자", fontSize = 18.sp,
+                fontWeight = FontWeight.SemiBold, color = RoadTripPrimary)
             Text(
-                text = "MOA · AI 여행 동반자",
-                fontSize = 18.sp,
-                fontWeight = FontWeight.SemiBold,
-                color = RoadTripPrimary
+                if (nickname.isNullOrBlank()) "오늘은 어디로 떠날까요?"
+                else "${nickname}님, 어디로 떠날까요?",
+                fontSize = 32.sp, lineHeight = 40.sp,
+                fontWeight = FontWeight.Bold, color = RoadTripText
             )
-
-            Text(
-                text = if (nickname.isNullOrBlank()) {
-                    "오늘은 어디로 떠날까요?"
-                } else {
-                    "${nickname}님, 어디로 떠날까요?"
-                },
-                fontSize = 32.sp,
-                lineHeight = 40.sp,
-                fontWeight = FontWeight.Bold,
-                color = RoadTripText
-            )
-
-            Text(
-                text = "모아가 당신의 여행을 함께할게요.",
-                fontSize = 21.sp,
-                color = RoadTripTextSecondary
-            )
+            Text("모아가 당신의 여행을 함께할게요.", fontSize = 21.sp,
+                color = RoadTripTextSecondary)
         }
 
         Card(
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(24.dp),
-            colors = CardDefaults.cardColors(
-                containerColor = RoadTripSurface
-            ),
-            elevation = CardDefaults.cardElevation(
-                defaultElevation = 2.dp
-            )
+            colors = CardDefaults.cardColors(containerColor = RoadTripSurface),
+            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
         ) {
             Column(
                 modifier = Modifier.padding(28.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
-                Text(
-                    text = "나의 여행",
-                    fontSize = 25.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = RoadTripText
-                )
-
+                Text("나의 여행", fontSize = 25.sp,
+                    fontWeight = FontWeight.Bold, color = RoadTripText)
                 val tripDescription = when (tripStatus) {
-                    TripStatus.PLANNED ->
-                        "${destination.orEmpty()} 여행이 예정되어 있어요."
-                    TripStatus.ACTIVE ->
-                        "${destination.orEmpty()} 여행이 진행 중이에요."
-                    TripStatus.COMPLETED ->
-                        "지난 여행을 완료했어요."
-                    null ->
-                        "아직 등록된 여행이 없어요."
+                    TripStatus.PLANNED -> "${destination.orEmpty()} 여행이 예정되어 있어요."
+                    TripStatus.ACTIVE -> "${destination.orEmpty()} 여행이 진행 중이에요."
+                    TripStatus.COMPLETED -> "지난 여행을 완료했어요."
+                    null -> "아직 등록된 여행이 없어요."
                 }
-
-                Text(
-                    text = tripDescription,
-                    fontSize = 20.sp,
-                    color = RoadTripTextSecondary
-                )
-
+                Text(tripDescription, fontSize = 20.sp, color = RoadTripTextSecondary)
                 Button(
                     onClick = onPrimaryClick,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .heightIn(min = 68.dp),
+                    modifier = Modifier.fillMaxWidth().heightIn(min = 68.dp),
                     shape = RoundedCornerShape(18.dp)
                 ) {
-                    Text(
-                        text = primaryLabel,
-                        fontSize = 21.sp,
-                        fontWeight = FontWeight.SemiBold
-                    )
+                    Text(primaryLabel, fontSize = 21.sp, fontWeight = FontWeight.SemiBold)
                 }
             }
         }
@@ -162,16 +107,13 @@ fun HomeScreen(
             horizontalArrangement = Arrangement.spacedBy(18.dp)
         ) {
             HomeShortcut(
-                title = "내 프로필",
-                subtitle = "여행 취향 관리",
+                title = "내 프로필", subtitle = "내 정보 확인 및 수정",
                 background = Color(0xFFEAE4FF),
                 onClick = onProfileClick,
                 modifier = Modifier.weight(1f)
             )
-
             HomeShortcut(
-                title = "여행 기록",
-                subtitle = "지난 여행 살펴보기",
+                title = "여행 기록", subtitle = "지난 여행 살펴보기",
                 background = Color(0xFFDDF8F1),
                 onClick = onHistoryClick,
                 modifier = Modifier.weight(1f)
@@ -198,20 +140,9 @@ private fun HomeShortcut(
             modifier = Modifier.padding(22.dp),
             verticalArrangement = Arrangement.Center
         ) {
-            Text(
-                text = title,
-                fontSize = 23.sp,
-                fontWeight = FontWeight.Bold,
-                color = RoadTripText
-            )
-
+            Text(title, fontSize = 23.sp, fontWeight = FontWeight.Bold, color = RoadTripText)
             Spacer(Modifier.height(8.dp))
-
-            Text(
-                text = subtitle,
-                fontSize = 17.sp,
-                color = RoadTripTextSecondary
-            )
+            Text(subtitle, fontSize = 17.sp, color = RoadTripTextSecondary)
         }
     }
 }

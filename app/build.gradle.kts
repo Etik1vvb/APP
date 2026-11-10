@@ -1,3 +1,15 @@
+import java.util.Properties
+
+val localProperties = Properties().apply {
+    val file = rootProject.file("local.properties")
+    if (file.exists()) {
+        file.inputStream().use { load(it) }
+    }
+}
+
+val kakaoRestApiKey =
+    localProperties.getProperty("KAKAO_REST_API_KEY", "")
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
@@ -15,6 +27,11 @@ android {
         targetSdk = 37
         versionCode = 1
         versionName = "1.0"
+        buildConfigField(
+            "String",
+            "KAKAO_REST_API_KEY",
+            "\"${kakaoRestApiKey.replace("\\", "\\\\").replace("\"", "\\\"")}\""
+        )
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -33,6 +50,7 @@ android {
     }
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 }
 

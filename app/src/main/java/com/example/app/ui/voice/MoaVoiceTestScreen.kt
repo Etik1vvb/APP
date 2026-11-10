@@ -1,19 +1,4 @@
-
 package com.example.app.ui.voice
-
-import ai.pleos.playground.stt.SpeechToText
-import ai.pleos.playground.stt.constant.Mode as SttMode
-import ai.pleos.playground.stt.constant.ErrorType as SttErrorType
-import ai.pleos.playground.stt.listener.OnInitializeListener as SttInitializeListener
-import ai.pleos.playground.stt.listener.ResultListener
-
-import ai.pleos.playground.tts.TextToSpeech
-import ai.pleos.playground.tts.constant.Mode as TtsMode
-import ai.pleos.playground.tts.constant.ErrorType as TtsErrorType
-import ai.pleos.playground.tts.listener.OnInitializeListener as TtsInitializeListener
-
-import android.os.Handler
-import android.os.Looper
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
@@ -21,255 +6,132 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import android.util.Log
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import com.example.app.voice.MoaVoiceManager
+
+
+
 
 private fun createMoaReply(input: String): String {
     val text = input.trim()
-
     return when {
-        text.contains("안녕") ->
-            "안녕하세요. 여행을 함께할 모아입니다."
-
-        text.contains("여행") ->
-            "좋아요. 어디로 여행을 떠나고 싶으신가요?"
-
-        text.contains("추천") ->
-            "원하시는 여행 지역을 알려주세요."
-
-        text.contains("고마워") ->
-            "천만에요. 즐거운 여행을 도와드릴게요."
-
-        else ->
-            "말씀하신 내용을 들었어요. 아직은 간단한 대화만 할 수 있어요."
+        text.contains("안녕") -> "안녕하세요. 여행을 함께할 모아입니다."
+        text.contains("안녕") -> "안녕하세요. 여행을 함께할 모아입니다."
+        text.contains("여행") -> "좋아요. 어디로 여행을 떠나고 싶으신가요?"
+        text.contains("추천") -> "원하시는 여행 지역을 알려주세요."
+        text.contains("고마워") -> "천만에요. 즐거운 여행을 도와드릴게요."
+        else -> "말씀하신 내용을 들었어요. 아직은 간단한 대화만 할 수 있어요."
     }
 }
 
 @Composable
-fun MoaVoiceTestScreen() {
+fun MoaVoiceTestScreen(onExit: () -> Unit = {}) {
     val context = LocalContext.current
-    val mainHandler = remember { Handler(Looper.getMainLooper()) }
+    val lifecycleOwner = LocalLifecycleOwner.current
+    val manager = remember(context) { MoaVoiceManager(context.applicationContext) }
 
     var status by remember { mutableStateOf("SDK 준비 중") }
     var recognizedText by remember { mutableStateOf("") }
     var moaReply by remember { mutableStateOf("") }
-
-    var sttReady by remember { mutableStateOf(false) }
-    var ttsReady by remember { mutableStateOf(false) }
+    var ready by remember { mutableStateOf(false) }
     var listening by remember { mutableStateOf(false) }
+    var replied by remember { mutableStateOf(false) }
+    var screenActive by remember { mutableStateOf(true) }
 
-    var repliedForCurrentRequest by remember {
-        mutableStateOf(false)
-    }
-
-    val stt = remember(context) {
-        SpeechToText(
-            context = context.applicationContext,
-            mode = SttMode.ON_DEVICE
-        )
-    }
-
-    val tts = remember(context) {
-        TextToSpeech(
-            context = context.applicationContext,
-            mode = TtsMode.ON_DEVICE
-        )
-    }
-
-    DisposableEffect(stt, tts) {
+    DisposableEffect(manager, lifecycleOwner) {
+        Log.d("MOA_NAV", "VOICE_COMPOSE_ENTER")
         var disposed = false
-
-        fun onMain(action: () -> Unit) {
-            mainHandler.post {
-                if (!disposed) action()
+        manager.onStatusChanged = { message ->
+            if (!disposed) {
+                status = message
+                if (message == "모아 준비 완료") ready = true
+                if (message.startsWith("STT 오류") || message.startsWith("STT 초기화 실패") ||
+                    message.startsWith("음성 복구 실패")) ready = false
             }
         }
-
-        val sttListener = object : ResultListener {
-            override fun onReady() {
-                onMain {
-                    status = "음성 인식 준비 완료"
-                }
-            }
-
-            override fun onStartedRecognition() {
-                onMain {
-                    listening = true
-                    status = "듣고 있어요..."
-                }
-            }
-
-            override fun onUpdated(
-                stt: String,
-                completed: Boolean
-            ) {
-                onMain {
-                    recognizedText = stt
-
-                    if (
-                        completed &&
-                        stt.isNotBlank() &&
-                        !repliedForCurrentRequest
-                    ) {
-                        repliedForCurrentRequest = true
-                        listening = false
-
-                        moaReply = createMoaReply(stt)
-
-                        if (ttsReady) {
-                            status = "모아가 답변하는 중"
-                            tts.speak(moaReply)
-                        } else {
-                            status = "TTS 준비되지 않음"
-                        }
-                    }
-                }
-            }
-
-            override fun onUpdatedEpdData(
-                on: Long,
-                off: Long
-            ) {}
-
-            override fun onUpdatedRms(rms: Double) {}
-
-            override fun onEndedRecognition() {
-                onMain {
+        manager.onRecognized = { text, completed ->
+            if (!disposed && screenActive && listening) {
+                recognizedText = text
+                if (completed && text.isNotBlank() && !replied) {
+                    replied = true
                     listening = false
-                    if (!repliedForCurrentRequest) {
-                        status = "음성 인식 종료"
-                    }
-                }
-            }
-
-            override fun onError(errorType: SttErrorType) {
-                onMain {
-                    listening = false
-                    status = "STT 오류: $errorType"
+                    manager.stopListening()
+                    moaReply = createMoaReply(text)
+                    manager.speak(moaReply)
+                    status = "모아가 답변하는 중"
                 }
             }
         }
-
-        stt.addListener(sttListener)
-
-        stt.initialize(
-            object : SttInitializeListener {
-                override fun onSuccess() {
-                    onMain {
-                        sttReady = true
-                        if (ttsReady) {
-                            status = "모아 준비 완료"
-                        }
-                    }
+        manager.onRecognitionEnded = {
+            if (!disposed) listening = false
+        }
+        val observer = LifecycleEventObserver { _, event ->
+            when (event) {
+                Lifecycle.Event.ON_RESUME -> screenActive = true
+                Lifecycle.Event.ON_PAUSE, Lifecycle.Event.ON_STOP -> {
+                    Log.d("MOA_NAV", "VOICE_LIFECYCLE_$event")
+                    screenActive = false
+                    listening = false
+                    replied = true
+                    manager.stopListening()
+                    manager.stopSpeaking()
                 }
-
-                override fun onFailure(errorType: SttErrorType) {
-                    onMain {
-                        status = "STT 초기화 실패: $errorType"
-                    }
-                }
+                else -> Unit
             }
-        )
-
-        tts.initialize(
-            object : TtsInitializeListener {
-                override fun onSuccess() {
-                    onMain {
-                        ttsReady = true
-                        if (sttReady) {
-                            status = "모아 준비 완료"
-                        }
-                    }
-                }
-
-                override fun onFailure(errorType: TtsErrorType) {
-                    onMain {
-                        status = "TTS 초기화 실패: $errorType"
-                    }
-                }
-            }
-        )
-
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        manager.initialize()
         onDispose {
+            Log.d("MOA_NAV", "VOICE_DISPOSE_BEGIN")
             disposed = true
-
-            stt.removeListener(sttListener)
-            stt.release()
-
-            tts.stop()
-            tts.release()
+            lifecycleOwner.lifecycle.removeObserver(observer)
+            manager.stopListening()
+            manager.stopSpeaking()
+            manager.release()
+            Log.d("MOA_NAV", "VOICE_DISPOSE_END")
         }
     }
 
     Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(24.dp),
+        Modifier.fillMaxSize().padding(24.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        Text(
-            text = "MOA 음성 대화 테스트",
-            style = MaterialTheme.typography.headlineMedium
-        )
-
+        Text("MOA 음성 대화 테스트", style = MaterialTheme.typography.headlineMedium)
         Text("상태: $status")
-
-        Text(
-            text = "STT: ${if (sttReady) "준비 완료" else "대기"}"
-        )
-
-        Text(
-            text = "TTS: ${if (ttsReady) "준비 완료" else "대기"}"
-        )
-
+        OutlinedButton(onClick = {
+            Log.d("MOA_NAV", "VOICE_EXIT_CLICK")
+            onExit()
+        }) { Text("여행 기록으로 돌아가기") }
         Button(
             onClick = {
-                tts.stop()
                 recognizedText = ""
                 moaReply = ""
-                repliedForCurrentRequest = false
+                replied = false
                 listening = true
+                manager.stopSpeaking()
                 status = "음성 인식 요청 중"
-                stt.request()
+                manager.startListening()
             },
-            enabled = sttReady && ttsReady && !listening
-        ) {
-            Text("모아에게 말하기")
-        }
-
+            enabled = ready && screenActive && !listening
+        ) { Text("모아에게 말하기") }
         OutlinedButton(
             onClick = {
-                stt.stop()
                 listening = false
+                replied = true
+                manager.stopListening()
+                manager.stopSpeaking()
                 status = "음성 인식 중지 요청"
             },
-            enabled = sttReady && listening
-        ) {
-            Text("듣기 중지")
-        }
-
+            enabled = listening
+        ) { Text("듣기 중지") }
         HorizontalDivider()
-
-        Text(
-            text = "내가 한 말",
-            style = MaterialTheme.typography.titleMedium
-        )
-
-        Text(
-            recognizedText.ifEmpty {
-                "아직 인식된 음성이 없습니다."
-            }
-        )
-
+        Text("내가 한 말", style = MaterialTheme.typography.titleMedium)
+        Text(recognizedText.ifEmpty { "아직 인식된 음성이 없습니다." })
         HorizontalDivider()
-
-        Text(
-            text = "모아의 답변",
-            style = MaterialTheme.typography.titleMedium
-        )
-
-        Text(
-            moaReply.ifEmpty {
-                "아직 답변이 없습니다."
-            }
-        )
+        Text("모아의 답변", style = MaterialTheme.typography.titleMedium)
+        Text(moaReply.ifEmpty { "아직 답변이 없습니다." })
     }
 }

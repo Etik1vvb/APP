@@ -284,6 +284,7 @@ class MoaVoiceManager(context: Context) {
         startSilenceCheck()
         if (waitingForSdkStop || recovering) {
             Log.d("MOA_STOP", "WAITING_FOR_RECOVERY")
+            // 종료 콜백 또는 복구 초기화가 끝나면 인식을 재개합니다.
             return
         }
         if (!sttReady) {
@@ -294,7 +295,8 @@ class MoaVoiceManager(context: Context) {
     }
 
     fun stopListening() {
-        if (released || !listening) return
+        if (released) return
+        val wasListening = listening
         listening = false
         cancelSilenceCheck()
         cancelRestart()
@@ -310,8 +312,10 @@ class MoaVoiceManager(context: Context) {
                 recoverStt()
             }
         }
-        onStatusChanged?.invoke("음성 인식 종료")
-        onRecognitionEnded?.invoke()
+        if (wasListening) {
+            onStatusChanged?.invoke("음성 인식 종료")
+            onRecognitionEnded?.invoke()
+        }
     }
 
     fun speak(text: String) {
@@ -332,13 +336,23 @@ class MoaVoiceManager(context: Context) {
         cancelStopWatchdog()
         generation++
         try {
+            // release()만으로 진행 중인 녹음이 즉시 종료된다고 가정하지 않습니다.
+            stt.stop()
+        } catch (e: Exception) {
+            Log.w("MOA_STOP", "STOP_ON_RELEASE_FAILED", e)
+        }
+        try {
             stt.removeListener(resultListener)
             stt.release()
         } catch (e: Exception) {
             Log.w("MOA_STOP", "RELEASE_STT_FAILED", e)
         }
-        tts.stop()
-        tts.release()
+        try {
+            tts.stop()
+            tts.release()
+        } catch (e: Exception) {
+            Log.w("MOA_STOP", "RELEASE_TTS_FAILED", e)
+        }
         onStatusChanged = null
         onRecognized = null
         onRecognitionEnded = null
