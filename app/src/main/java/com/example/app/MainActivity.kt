@@ -249,6 +249,20 @@ class MainActivity : ComponentActivity() {
             var destinationTripId by rememberSaveable {
                 mutableStateOf<String?>(null)
             }
+
+            // 여행별 자동 음성 추천 기록
+            val autoSpokenPlaceIds = remember(destinationTripId) {
+                mutableStateListOf<String>()
+            }
+
+            var autoLastSpokenAt by remember(destinationTripId) {
+                mutableLongStateOf(0L)
+            }
+
+            var lastManualVoiceAt by remember(destinationTripId) {
+                mutableLongStateOf(0L)
+            }
+
             var destinationBusy by remember { mutableStateOf(false) }
 
 
@@ -313,6 +327,20 @@ class MainActivity : ComponentActivity() {
             var voiceDocentStory by remember(destinationTripId) {
                 mutableStateOf<String?>(null)
             }
+
+
+            var voiceDocentPendingPlace by remember(destinationTripId) {
+                mutableStateOf<KakaoPlace?>(null)
+            }
+
+            var voiceDocentAwaitingConsent by remember(destinationTripId) {
+                mutableStateOf(false)
+            }
+
+            var voiceDocentGeneration by remember(destinationTripId) {
+                mutableIntStateOf(0)
+            }
+
 
             var voiceDocentError by remember(destinationTripId) {
                 mutableStateOf<String?>(null)
@@ -1167,13 +1195,112 @@ class MainActivity : ComponentActivity() {
 
 
                             tripVoiceManager.onRecognitionEnded = {
+                                lastManualVoiceAt =
+                                    android.os.SystemClock.elapsedRealtime()
                                 tripVoiceListening = false
                                 tripVoiceStatus = "음성 입력 종료"
 
                                 // 확정된 STT 문장만 명령으로 실행
                                 val sentence = tripConfirmedSpeech.trim()
 
-                                if (sentence.isNotBlank()) {
+                                val normalizedAnswer = sentence
+                                    .lowercase()
+                                    .replace(Regex("[\\s,.!?]"), "")
+                                    .removePrefix("모아야")
+
+                                val agreed = normalizedAnswer in setOf(
+                                    "알려줘",
+                                    "알려주세요",
+                                    "자세히알려줘",
+                                    "설명해줘",
+                                    "설명해주세요",
+                                    "네",
+                                    "응",
+                                    "좋아",
+                                    "궁금해",
+                                    "궁금해요"
+                                )
+
+                                val declined = normalizedAnswer in setOf(
+                                    "아니",
+                                    "아니요",
+                                    "괜찮아",
+                                    "괜찮아요",
+                                    "필요없어",
+                                    "다음에"
+                                )
+
+                                if (voiceDocentAwaitingConsent && agreed) {
+
+                                    val selectedPlace = voiceDocentPendingPlace
+
+                                    if (selectedPlace != null && !voiceDocentLoading) {
+                                        voiceDocentAwaitingConsent = false
+                                        voiceDocentLoading = true
+                                        voiceDocentStory = null
+                                        voiceDocentError = null
+
+                                        val requestGeneration = voiceDocentGeneration
+
+                                        scope.launch {
+                                            try {
+                                                val basicFacts = buildList {
+                                                    add("장소명: ${selectedPlace.name}")
+
+                                                    if (selectedPlace.address.isNotBlank()) {
+                                                        add("주소: ${selectedPlace.address}")
+                                                    }
+
+                                                    if (selectedPlace.category.isNotBlank()) {
+                                                        add("업종: ${selectedPlace.category}")
+                                                    }
+                                                }
+
+                                                val result = docentApi.generateStory(
+                                                    placeName = selectedPlace.name,
+                                                    region = selectedPlace.address.take(100),
+                                                    topic = "해당 장소와 지역의 역사, 문화, 음식 이야기",
+                                                    userInterests = target?.info?.purpose.orEmpty(),
+                                                    verifiedFacts = basicFacts,
+                                                    sourceName = "카카오 로컬 API 장소 기본 정보"
+                                                )
+
+                                                if (
+                                                    requestGeneration == voiceDocentGeneration &&
+                                                    voiceDocentPendingPlace?.id == selectedPlace.id
+                                                ) {
+                                                    voiceDocentStory = result.storyText
+
+                                                    if (ttsReady && result.storyText.isNotBlank()) {
+                                                        docentTts.stop()
+                                                        docentTts.speak(result.storyText)
+                                                    }
+                                                }
+
+                                            } catch (
+                                                e: kotlinx.coroutines.CancellationException
+                                            ) {
+                                                throw e
+                                            } catch (e: Exception) {
+                                                if (requestGeneration == voiceDocentGeneration) {
+                                                    voiceDocentError =
+                                                        e.message ?: "AI 설명 생성 실패"
+                                                }
+                                            } finally {
+                                                if (requestGeneration == voiceDocentGeneration) {
+                                                    voiceDocentLoading = false
+                                                }
+                                            }
+                                        }
+                                    }
+
+                                } else if (voiceDocentAwaitingConsent && declined) {
+
+                                    voiceDocentAwaitingConsent = false
+                                    voiceDocentError = null
+                                    tripVoiceStatus = "상세 설명을 생략했습니다."
+
+                                } else if (sentence.isNotBlank()) {
                                     val command = MoaVoiceCommandParser.parse(sentence)
 
                                     if (
@@ -1189,6 +1316,11 @@ class MainActivity : ComponentActivity() {
                                             val keyword =
                                                 MoaVoiceCommandParser.searchKeyword(sentence)
 
+                                            voiceDocentGeneration++
+                                            voiceDocentPendingPlace = null
+                                            voiceDocentAwaitingConsent = false
+                                            voiceDocentStory = null
+                                            voiceDocentError = null
                                             voiceSearchKeyword = keyword
                                             voiceSearchLoading = true
                                             voiceSearchPlaces = emptyList()
@@ -1211,13 +1343,24 @@ class MainActivity : ComponentActivity() {
                                                                 val category = candidate.category.lowercase()
 
                                                                 when (keyword) {
-                                                                    "맛집" ->
-                                                                        category.contains("음식점") ||
-                                                                                category.contains("식당") ||
-                                                                                category.contains("한식") ||
-                                                                                category.contains("중식") ||
-                                                                                category.contains("일식") ||
-                                                                                category.contains("양식")
+                                                                    "맛집" -> {
+                                                                        val isCafe =
+                                                                            category.contains("카페") ||
+                                                                                    category.contains("커피") ||
+                                                                                    category.contains("디저트") ||
+                                                                                    category.contains("베이커리") ||
+                                                                                    category.contains("제과")
+
+                                                                        val isRestaurant =
+                                                                            category.contains("음식점") ||
+                                                                                    category.contains("식당") ||
+                                                                                    category.contains("한식") ||
+                                                                                    category.contains("중식") ||
+                                                                                    category.contains("일식") ||
+                                                                                    category.contains("양식")
+
+                                                                        isRestaurant && !isCafe
+                                                                    }
 
                                                                     "카페" ->
                                                                         category.contains("카페") ||
@@ -1243,14 +1386,66 @@ class MainActivity : ComponentActivity() {
                                                                 learnedPreferences =
                                                                     profile?.id?.let { profileId ->
                                                                         moaLearner.getLearnedPreferences(profileId)
-                                                                    }.orEmpty()
+                                                                    }.orEmpty(),
+
+
+                                                                requestedKeyword = keyword
                                                             )
+
+                                                            Log.d(
+                                                                "MOA_SCORE_DEBUG",
+                                                                """
+                                                                    ===== 추천 조건 =====
+                                                                    프로필 취향: ${scoringContext.profilePreferences}
+                                                                    선호 분위기: ${scoringContext.profileAtmospheres}
+                                                                    여행 목적: ${scoringContext.tripPurpose}
+                                                                    원하는 경험: ${scoringContext.desiredExperience}
+                                                                    현재 기분: ${scoringContext.tripMood}
+                                                                    학습 가중치: ${scoringContext.learnedPreferences}
+                                                                    =====================
+                                                                    """.trimIndent()
+                                                            )
+
 
                                                             val ranked = matchingPlaces
                                                                 .map { candidate ->
-                                                                    moaScorer.score(candidate, scoringContext)
+
+                                                                    val scored = moaScorer.score(
+                                                                        candidate,
+                                                                        scoringContext
+                                                                    )
+
+                                                                    val distanceResult = FloatArray(1)
+
+                                                                    android.location.Location.distanceBetween(
+                                                                        location.latitude,
+                                                                        location.longitude,
+                                                                        candidate.latitude,
+                                                                        candidate.longitude,
+                                                                        distanceResult
+                                                                    )
+
+                                                                    Log.d(
+                                                                        "MOA_SCORE_DEBUG",
+                                                                        """
+                                                                            장소: ${candidate.name}
+                                                                            카테고리: ${candidate.category}
+                                                                            직선거리: ${distanceResult[0].toInt()}m
+                                                                            세부점수: ${scored.score}
+                                                                            총점: ${scored.score.total}
+                                                                            """.trimIndent()
+                                                                    )
+                                                                    Log.d(
+                                                                        "MOA_SCORE_DEBUG",
+                                                                        "장소=${candidate.name}, " +
+                                                                                "장소좌표=${candidate.latitude},${candidate.longitude}, " +
+                                                                                "현재좌표=${location.latitude},${location.longitude}"
+                                                                    )
+
+                                                                    scored
                                                                 }
                                                                 .sortedByDescending { it.score.total }
+
 
                                                             // 직접 요청이므로 60점 제한은 적용하지 않음
                                                             voiceSearchPlaces = ranked.map { it.place }
@@ -1271,66 +1466,40 @@ class MainActivity : ComponentActivity() {
                                                                 }
 
                                                             val topPlace = ranked.firstOrNull()?.place
+                                                            voiceDocentPendingPlace = topPlace
+                                                            voiceDocentAwaitingConsent = topPlace != null
 
                                                             if (topPlace != null) {
+                                                                voiceDocentStory = null
+                                                                voiceDocentError = null
+                                                                voiceDocentLoading = false
 
-                                                                voiceDocentLoading = true
+                                                                val recommendationMessage =
+                                                                    "${topPlace.name}을 추천드려요. 관련 정보도 궁금하신가요?"
 
-                                                                scope.launch {
+                                                                if (ttsReady) {
                                                                     try {
-                                                                        val basicFacts = buildList {
-                                                                            add("장소명: ${topPlace.name}")
+                                                                        docentTts.stop()
+                                                                        docentTts.speak(recommendationMessage)
 
-                                                                            if (topPlace.address.isNotBlank()) {
-                                                                                add("주소: ${topPlace.address}")
-                                                                            }
-
-                                                                            if (topPlace.category.isNotBlank()) {
-                                                                                add("업종: ${topPlace.category}")
-                                                                            }
-                                                                        }
-
-                                                                        val result = docentApi.generateStory(
-                                                                            placeName = topPlace.name,
-                                                                            region = topPlace.address.take(100),
-                                                                            topic = "해당 장소와 지역의 역사, 문화, 음식 이야기",
-                                                                            userInterests =
-                                                                                target?.info?.purpose.orEmpty(),
-                                                                            verifiedFacts = basicFacts,
-                                                                            sourceName = "카카오 로컬 API 장소 기본 정보"
+                                                                        Log.d(
+                                                                            "MOA_VOICE",
+                                                                            "간단 추천 안내: ${topPlace.name}"
                                                                         )
-
-                                                                        // 사용자가 새로운 검색을 시작했다면
-                                                                        // 이전 설명을 자동 재생하지 않도록 이후 보강 예정
-                                                                        voiceDocentStory = result.storyText
-
-                                                                        if (
-                                                                            ttsReady &&
-                                                                            !tripVoiceListening &&
-                                                                            result.storyText.isNotBlank()
-                                                                        ) {
-                                                                            docentTts.stop()
-                                                                            docentTts.speak(result.storyText)
-                                                                        }
-
-                                                                    } catch (
-                                                                        e: kotlinx.coroutines.CancellationException
-                                                                    ) {
-                                                                        throw e
                                                                     } catch (e: Exception) {
-                                                                        voiceDocentError =
-                                                                            e.message ?: "AI 설명 생성에 실패했습니다."
-
                                                                         Log.e(
-                                                                            "MOA_VOICE_DOCENT",
-                                                                            "음성 검색 1위 도슨트 실패",
+                                                                            "MOA_VOICE",
+                                                                            "간단 추천 TTS 실패",
                                                                             e
                                                                         )
-                                                                    } finally {
-                                                                        voiceDocentLoading = false
                                                                     }
                                                                 }
+
+                                                                voiceSearchMessage =
+                                                                    "'$keyword' 검색 결과 ${ranked.size}개. " +
+                                                                            "첫 번째 추천은 ${topPlace.name}입니다."
                                                             }
+
                                                         },
 
                                                         onFailure = { error ->
@@ -1523,6 +1692,16 @@ class MainActivity : ComponentActivity() {
                                                     "📖 AI 도슨트 이야기",
                                                     style = MaterialTheme.typography.titleSmall
                                                 )
+                                                if (
+                                                    voiceDocentAwaitingConsent &&
+                                                    voiceDocentStory == null &&
+                                                    !voiceDocentLoading
+                                                ) {
+                                                    Text(
+                                                        "관련 정보가 궁금하면 마이크를 누르고 '알려줘'라고 말씀하세요.",
+                                                        style = MaterialTheme.typography.bodySmall
+                                                    )
+                                                }
 
                                                 if (voiceDocentLoading) {
                                                     LinearProgressIndicator(
@@ -1870,7 +2049,10 @@ class MainActivity : ComponentActivity() {
                                 learnedPreferences =
                                     activeProfile?.id?.let { profileId ->
                                         moaLearner.getLearnedPreferences(profileId)
-                                    }.orEmpty()
+                                    }.orEmpty(),
+
+
+
                             )
 
                             // 상태 변경을 읽어 학습 후 Compose 재구성을 유도합니다.
@@ -1901,7 +2083,96 @@ class MainActivity : ComponentActivity() {
 
 // 2. 자동 추천: 60점 이상
                             val automaticPlaces = rankedPlaces
+                                .filter { it.score.total >= 40.0 }
+
+                            val autoVoiceCandidate = rankedPlaces.firstOrNull {
+                                it.score.total >= 40.0 &&
+                                        it.place.id !in autoSpokenPlaceIds
+                            }
+/*
+                            val automaticPlaces = rankedPlaces
                                 .filter { it.score.total >= 60.0 }
+
+                            val autoVoiceCandidate = rankedPlaces.firstOrNull {
+                                it.score.total >= 85.0 &&
+                                        it.place.id !in autoSpokenPlaceIds
+                            } */
+
+                            LaunchedEffect(
+                                destinationTripId,
+                                nearbyPlaces,
+                                currentLocation,
+                                learningVersion,
+                                ttsReady,
+                                tripVoiceListening,
+                                voiceDocentLoading,
+                                voiceDocentAwaitingConsent,
+                                naviRouting,
+                                destinationBusy,
+                                lastManualVoiceAt
+                            ) {
+                                val candidate = autoVoiceCandidate
+                                    ?: return@LaunchedEffect
+
+                                if (
+                                    !ttsReady ||
+                                    tripVoiceListening ||
+                                    voiceDocentLoading ||
+                                    docentLoading ||
+                                    voiceDocentAwaitingConsent ||
+                                    voiceSearchLoading ||
+                                    naviRouting ||
+                                    destinationBusy
+                                ) {
+                                    return@LaunchedEffect
+                                }
+
+                                val now = android.os.SystemClock.elapsedRealtime()
+
+                                val recommendationCooldown = 15L * 60L * 1000L
+                                val manualVoiceCooldown = 2L * 60L * 1000L
+
+                                // 마지막 자동 안내 이후 최소 15분
+                                if (
+                                    autoLastSpokenAt > 0L &&
+                                    now - autoLastSpokenAt < recommendationCooldown
+                                ) {
+                                    return@LaunchedEffect
+                                }
+
+                                // 사용자가 직접 음성 명령을 내린 직후에는 방해하지 않음
+                                if (
+                                    lastManualVoiceAt > 0L &&
+                                    now - lastManualVoiceAt < manualVoiceCooldown
+                                ) {
+                                    return@LaunchedEffect
+                                }
+
+                                val message =
+                                    "근처에 ${candidate.place.name}이 있어요. " +
+                                            "취향에 잘 맞는 장소라 추천드려요. " +
+                                            "관련 정보도 궁금하신가요?"
+
+                                try {
+                                    docentTts.speak(message)
+
+                                    autoSpokenPlaceIds.add(candidate.place.id)
+                                    autoLastSpokenAt = now
+
+                                    Log.d(
+                                        "MOA_AUTO_VOICE",
+                                        "자동 안내: ${candidate.place.name}, " +
+                                                "점수=${candidate.score.total}"
+                                    )
+                                } catch (e: Exception) {
+                                    Log.e(
+                                        "MOA_AUTO_VOICE",
+                                        "자동 음성 추천 실패",
+                                        e
+                                    )
+                                }
+                            }
+
 
 // 3. 사용자가 요청한 경우에는 점수 제한 해제
                             val scoredPlaces = if (showAllRequestedPlaces) {
