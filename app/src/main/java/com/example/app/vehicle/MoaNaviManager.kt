@@ -21,6 +21,11 @@ class MoaNaviManager(context: Context) {
     private val naviHelper = NaviHelper(context.applicationContext)
     private val mainHandler = Handler(Looper.getMainLooper())
 
+    // 초기 연결 응답과 경로 탐색 완료 이벤트를 별도로 기다립니다.
+    // 이 값은 '경로 성공' 판정 시간이 아니라 대기 해제 한도입니다.
+    private val connectionResponseTimeoutMs = 12_000L
+    private val routeEventTimeoutMs = 8_000L
+
     private var listenerRegistered = false
     private var connected = false
     private var connecting = false
@@ -48,6 +53,11 @@ class MoaNaviManager(context: Context) {
         }
 
         override fun onRoutingCompleted() {
+            Log.d(
+                "MOA_NAVI_EVENT",
+                "onRoutingCompleted: pending=${pendingRecommendation?.place?.name}, " +
+                        "dispatched=${pendingRecommendation?.routeDispatched}"
+            )
             updateRouteStatus("경로 탐색 완료")
             mainHandler.post { finishRecommendationSuccess() }
         }
@@ -124,12 +134,19 @@ class MoaNaviManager(context: Context) {
         lateinit var request: PendingRecommendation
         val timeout = Runnable {
             if (pendingRecommendation === request) {
-                finishRecommendationFailure("경로 탐색 응답 시간이 초과되었습니다.")
+                val reason = if (request.routeDispatched) {
+                    "경로 요청은 전송했지만 NaviHelper 완료 이벤트를 확인하지 못했습니다."
+                } else {
+                    "NaviHelper 연결 응답 시간이 초과되었습니다."
+                }
+                Log.w("MOA_NAVI_TIMEOUT", "${place.name}: $reason")
+                finishRecommendationFailure(reason)
             }
         }
         request = PendingRecommendation(place, onCompleted, onFailed, timeout)
         pendingRecommendation = request
-        mainHandler.postDelayed(timeout, 45_000L)
+        // 연결 단계와 경로 탐색 단계를 구분합니다.
+        mainHandler.postDelayed(timeout, connectionResponseTimeoutMs)
         updateRouteStatus("MOA 추천 목적지 연결 중: ${place.name}")
 
         initialize(
@@ -138,7 +155,12 @@ class MoaNaviManager(context: Context) {
                     try {
                         updateRouteStatus("MOA 추천 경로 요청 중: ${place.name}")
                         request.routeDispatched = true
+                        // 연결 대기 타이머 대신, 경로 완료 응답 타이머를 새로 시작합니다.
+                        mainHandler.removeCallbacks(request.timeout)
+                        mainHandler.postDelayed(request.timeout, routeEventTimeoutMs)
+                        Log.d("MOA_NAVI", "경로 요청 전송: ${place.name}")
                         naviHelper.requestRoute(route)
+                        updateRouteStatus("경로 요청 전송됨 · 완료 확인 중")
                     } catch (e: Exception) {
                         Log.e("MOA_NAVI", "추천 경로 요청 예외", e)
                         finishRecommendationFailure(e.message ?: "경로 요청 실패")
