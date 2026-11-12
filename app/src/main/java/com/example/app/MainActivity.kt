@@ -25,6 +25,7 @@ import com.example.app.data.TripDestinationRepository
 import com.example.app.data.TripPlace
 import com.example.app.data.TripRepository
 import com.example.app.data.TripStatus
+import com.example.app.data.MoaTripRatingStore
 import androidx.activity.compose.BackHandler
 import com.example.app.data.UserPreferencesRepository
 import com.example.app.data.UserProfile
@@ -37,6 +38,7 @@ import com.example.app.ui.theme.APPTheme
 import com.example.app.ui.trip.TripInfo
 import com.example.app.ui.trip.TripSetupScreen
 import com.example.app.ui.trip.TripDestinationScreen
+import com.example.app.ui.trip.MoaTripSatisfactionRatingRow
 import com.example.app.ui.voice.AudioRecorderTestScreen
 import com.example.app.ui.voice.MicrophoneTest
 import com.example.app.ui.voice.MoaVoiceTestScreen
@@ -227,6 +229,11 @@ class MainActivity : ComponentActivity() {
             val tripRepository = remember(context) {
                 TripRepository(context.applicationContext)
             }
+            val tripRatingStore = remember(context) {
+                MoaTripRatingStore(context.applicationContext)
+            }
+            var tripRatingVersion by remember { mutableIntStateOf(0) }
+            var tripRatingMessage by remember { mutableStateOf<String?>(null) }
             val destinationRepository = remember(context) {
                 TripDestinationRepository(context.applicationContext)
             }
@@ -1855,7 +1862,10 @@ class MainActivity : ComponentActivity() {
                                                                 longitude = location.longitude,
                                                                 learnedPreferences =
                                                                     latestVoiceProfile.value?.id?.let { profileId ->
-                                                                        moaLearner.getLearnedPreferences(profileId)
+                                                                        tripRatingStore.adjustLearnedPreferences(
+                                                                            profileId,
+                                                                            moaLearner.getLearnedPreferences(profileId)
+                                                                        )
                                                                     }.orEmpty(),
 
 
@@ -2592,7 +2602,10 @@ class MainActivity : ComponentActivity() {
                                     longitude = locationForScoring.longitude,
                                     learnedPreferences =
                                         activeProfile?.id?.let { profileId ->
-                                            moaLearner.getLearnedPreferences(profileId)
+                                            tripRatingStore.adjustLearnedPreferences(
+                                                profileId,
+                                                moaLearner.getLearnedPreferences(profileId)
+                                            )
                                         }.orEmpty(),
 
 
@@ -3246,6 +3259,12 @@ class MainActivity : ComponentActivity() {
                             if (completedTrips.isEmpty()) {
                                 Text("아직 완료된 여행이 없습니다.")
                             } else {
+                                Text(
+                                    "기본 만족도는 3점(중립)입니다. 평가를 저장하면 다음 여행의 장소 추천에 반영됩니다.",
+                                    style = MaterialTheme.typography.bodySmall
+                                )
+                                tripRatingMessage?.let { Text(it, color = MaterialTheme.colorScheme.primary) }
+
                                 completedTrips.forEach { trip ->
                                     ElevatedCard(modifier = Modifier.fillMaxWidth()) {
                                         Column(
@@ -3256,6 +3275,32 @@ class MainActivity : ComponentActivity() {
                                             Text("${trip.info.startDate} ~ ${trip.info.endDate}")
                                             Text("동행자: ${trip.info.companions}")
                                             Text("여행 목적: ${trip.info.purpose}")
+
+                                            // 평가하지 않은 여행은 기본 3점으로 보여주되 학습에는 반영하지 않습니다.
+                                            val savedRating = remember(trip.id, tripRatingVersion) {
+                                                tripRatingStore.getRating(trip.id)
+                                            }
+                                            MoaTripSatisfactionRatingRow(
+                                                savedRating = savedRating,
+                                                onSave = { stars ->
+                                                    val finalPlace = destinations[trip.id]
+                                                    val category = finalPlace?.takeIf { it.category != "주소" }?.let {
+                                                        MoaPlaceCategory.classify(name = it.name, category = it.category)
+                                                    }?.takeUnless { it == MoaPlaceCategory.OTHER }
+
+                                                    if (tripRatingStore.saveRating(
+                                                            tripId = trip.id,
+                                                            profileId = trip.profileId,
+                                                            rating = stars,
+                                                            category = category
+                                                        )) {
+                                                        tripRatingVersion++
+                                                        tripRatingMessage = "'${trip.info.destination}' 만족도 ${stars}점 저장 완료"
+                                                    } else {
+                                                        tripRatingMessage = "만족도 저장에 실패했습니다."
+                                                    }
+                                                }
+                                            )
 
                                             Button(
                                                 onClick = {
@@ -3314,6 +3359,8 @@ class MainActivity : ComponentActivity() {
                                             tripError = "여행 삭제에 실패했습니다."
                                         else {
                                             destinationRepository.delete(target.id)
+                                            tripRatingStore.deleteRating(target.id)
+                                            tripRatingVersion++
                                             tripError = null
                                         }
                                     } catch (e: Exception) {
